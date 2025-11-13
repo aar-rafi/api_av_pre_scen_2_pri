@@ -45,8 +45,8 @@ pipeline {
                     # Initialize uv project
                     uv init --no-readme
 
-                    # Activate virtual environment
-                    source .venv/bin/activate
+                    # Activate virtual environment (use . instead of source for sh compatibility)
+                    . .venv/bin/activate
 
                     # Add dependencies from requirements.txt
                     uv add -r requirements.txt
@@ -54,9 +54,6 @@ pipeline {
                     # Run tests
                     python -m pytest test_app.py -v --tb=short
                     echo "All tests passed successfully"
-
-                    # Cleanup
-                    deactivate
                 '''
             }
         }
