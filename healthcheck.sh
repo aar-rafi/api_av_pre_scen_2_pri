@@ -32,13 +32,13 @@ echo "   Container health status: ${CONTAINER_HEALTH}"
 echo ""
 echo "3. Testing application endpoints..."
 
-# Function to check endpoint (using docker exec to run from inside container)
+# Function to check endpoint (using docker exec with python)
 check_endpoint() {
     local endpoint=$1
     local endpoint_name=$2
 
     for i in $(seq 1 $MAX_RETRIES); do
-        if docker exec demo-app-container curl -s -f "${endpoint}" > /dev/null 2>&1; then
+        if docker exec demo-app-container python -c "import requests; requests.get('${endpoint}', timeout=5).raise_for_status()" > /dev/null 2>&1; then
             echo "   [OK] ${endpoint_name} is responding"
             return 0
         else
@@ -57,7 +57,7 @@ check_endpoint() {
 if check_endpoint "${HEALTH_ENDPOINT}" "Health endpoint"; then
     echo ""
     echo "4. Fetching health status..."
-    HEALTH_RESPONSE=$(docker exec demo-app-container curl -s "${HEALTH_ENDPOINT}")
+    HEALTH_RESPONSE=$(docker exec demo-app-container python -c "import requests; print(requests.get('${HEALTH_ENDPOINT}').text)")
     echo "   Response: ${HEALTH_RESPONSE}"
 
     # Validate health status
