@@ -78,8 +78,11 @@ pipeline {
             steps {
                 echo 'Deploying application using Docker Compose...'
                 sh '''
-                    # Stop and remove existing containers
-                    docker-compose down || true
+                    # Stop and remove existing containers (including orphans)
+                    docker-compose down --remove-orphans || true
+
+                    # Force remove any existing container with the same name
+                    docker rm -f demo-app-container || true
 
                     # Start the application
                     docker-compose up -d
