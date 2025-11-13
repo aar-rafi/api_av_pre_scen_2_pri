@@ -42,6 +42,9 @@ pipeline {
                     export PATH="$HOME/.local/bin:$PATH"
                     cd app
 
+                    # Clean up previous build artifacts
+                    rm -rf .venv pyproject.toml uv.lock
+
                     # Initialize uv project
                     uv init --no-readme
 
