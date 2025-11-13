@@ -42,12 +42,21 @@ pipeline {
                     export PATH="$HOME/.local/bin:$PATH"
                     cd app
 
-                    # Install test dependencies using uv
-                    uv pip install --system pytest pytest-flask flask requests
+                    # Initialize uv project
+                    uv init --no-readme
+
+                    # Activate virtual environment
+                    source .venv/bin/activate
+
+                    # Add dependencies from requirements.txt
+                    uv add -r requirements.txt
 
                     # Run tests
-                    python3 -m pytest test_app.py -v --tb=short
+                    python -m pytest test_app.py -v --tb=short
                     echo "All tests passed successfully"
+
+                    # Cleanup
+                    deactivate
                 '''
             }
         }
