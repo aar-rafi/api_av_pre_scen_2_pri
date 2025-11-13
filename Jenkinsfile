@@ -130,9 +130,9 @@ pipeline {
                     echo "Health Check URL: http://localhost:5000/health"
                     echo ""
                     echo "Testing endpoints:"
-                    curl -s http://localhost:5000/ | python -m json.tool
+                    docker exec demo-app-container curl -s http://localhost:5000/ | python3 -m json.tool
                     echo ""
-                    curl -s http://localhost:5000/health | python -m json.tool
+                    docker exec demo-app-container curl -s http://localhost:5000/health | python3 -m json.tool
                     echo ""
                     echo "================================"
                     echo "DEPLOYMENT SUCCESSFUL!"
