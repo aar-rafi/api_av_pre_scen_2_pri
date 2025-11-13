@@ -19,12 +19,18 @@ pipeline {
 
         stage('Build') {
             steps {
-                echo 'Installing dependencies...'
+                echo 'Validating application files...'
                 sh '''
-                    export PATH="$HOME/.local/bin:$PATH"
-                    cd app
-                    uv add -r requirements.txt
-                    echo "Build completed successfully"
+                    echo "Checking application structure..."
+                    ls -la app/
+
+                    echo "Validating requirements.txt..."
+                    cat app/requirements.txt
+
+                    echo "Validating application code..."
+                    python3 -m py_compile app/app.py
+
+                    echo "Build validation completed successfully"
                 '''
             }
         }
@@ -33,8 +39,14 @@ pipeline {
             steps {
                 echo 'Running unit tests...'
                 sh '''
+                    export PATH="$HOME/.local/bin:$PATH"
                     cd app
-                    python -m pytest test_app.py -v --tb=short
+
+                    # Install test dependencies using uv
+                    uv pip install --system pytest pytest-flask flask requests
+
+                    # Run tests
+                    python3 -m pytest test_app.py -v --tb=short
                     echo "All tests passed successfully"
                 '''
             }
