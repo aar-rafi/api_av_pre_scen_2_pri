@@ -29,18 +29,22 @@ The demo application is a Flask web server with the following endpoints:
 
 ### Required Software
 
-1. **Docker** (version 20.10 or higher)
+1. **Docker** (version 28.0 or higher)
    - Install from: https://docs.docker.com/get-docker/
+   - Verify: `docker --version`
 
-2. **Docker Compose** (version 2.0 or higher)
+2. **Docker Compose** (version 2.40 or higher)
+   - **Note**: Use `docker compose` (not `docker-compose`)
    - Usually included with Docker Desktop
-   - Linux users: https://docs.docker.com/compose/install/
+   - Verify: `docker compose version`
 
 3. **Jenkins** (for running the pipeline)
-   - Option A: Local installation
-   - Option B: Docker-based Jenkins (recommended)
+   - Docker-based Jenkins (recommended)
+   - Requires additional tools: Python 3.13+, uv, docker-compose
 
-4. **Python 3.11+** (for local testing)
+4. **Python 3.11+** with uv (for local testing)
+   - Install uv: `curl -LsSf https://astral.sh/uv/install.sh | sh`
+   - Verify: `uv --version`
 
 5. **Git** (for version control)
 
@@ -49,6 +53,7 @@ The demo application is a Flask web server with the following endpoints:
 - 4GB RAM minimum
 - 10GB free disk space
 - Linux, macOS, or Windows with WSL2
+- Ports available: 5000 (app), 8080-8081 (Jenkins)
 
 ## Quick Start
 
@@ -91,48 +96,26 @@ This is the recommended approach for experiencing the complete CI/CD pipeline.
 
 #### Step 1: Set Up Jenkins in Docker
 
-Create a Docker network and run Jenkins with Docker-in-Docker support:
+Run Jenkins container with Docker socket access:
 
 ```bash
-# Create a Docker network
-docker network create jenkins
+# Create Jenkins home directory
+mkdir -p ~/jenkins_home
 
 # Run Jenkins container with Docker support
 docker run -d \
   --name jenkins \
-  --network jenkins \
-  -p 8080:8080 -p 50000:50000 \
-  -v jenkins_home:/var/jenkins_home \
+  -p 8081:8080 \
+  -p 50000:50000 \
+  -v ~/jenkins_home:/var/jenkins_home \
   -v /var/run/docker.sock:/var/run/docker.sock \
   jenkins/jenkins:lts
+
+# Wait for Jenkins to start (30 seconds)
+sleep 30
 ```
 
-For Docker-in-Docker (DinD) approach:
-
-```bash
-# Start Docker-in-Docker container
-docker run -d \
-  --name jenkins-docker \
-  --privileged \
-  --network jenkins \
-  --network-alias docker \
-  -e DOCKER_TLS_CERTDIR=/certs \
-  -v jenkins-docker-certs:/certs/client \
-  -v jenkins-data:/var/jenkins_home \
-  docker:dind
-
-# Start Jenkins container
-docker run -d \
-  --name jenkins \
-  --network jenkins \
-  -p 8080:8080 -p 50000:50000 \
-  -v jenkins-data:/var/jenkins_home \
-  -v jenkins-docker-certs:/certs/client:ro \
-  -e DOCKER_HOST=tcp://docker:2376 \
-  -e DOCKER_CERT_PATH=/certs/client \
-  -e DOCKER_TLS_VERIFY=1 \
-  jenkins/jenkins:lts
-```
+**Note**: Using port 8081 to avoid conflicts. Access Jenkins at `http://localhost:8081`
 
 #### Step 2: Initial Jenkins Setup
 
@@ -166,24 +149,28 @@ Restart Jenkins after installation:
 docker restart jenkins
 ```
 
-#### Step 4: Install Docker CLI in Jenkins Container
+#### Step 4: Install Required Tools in Jenkins Container
+
+Jenkins needs Python 3, uv, and docker-compose to run the pipeline:
 
 ```bash
-# Enter the Jenkins container
-docker exec -it -u root jenkins bash
+# Install uv for jenkins user
+docker exec -it jenkins bash -c "curl -LsSf https://astral.sh/uv/install.sh | sh"
 
-# Install Docker CLI
-apt-get update && apt-get install -y docker.io
+# Install Python 3 and docker-compose
+docker exec -it --user root jenkins bash -c "apt-get update && apt-get install -y python3 python3-pip docker-compose"
 
-# Add jenkins user to docker group (if using docker.sock)
-usermod -aG docker jenkins
+# Fix Docker socket permissions
+docker exec -it --user root jenkins bash -c "chmod 666 /var/run/docker.sock"
 
-# Exit the container
-exit
-
-# Restart Jenkins
-docker restart jenkins
+# Verify installations
+docker exec -it jenkins bash -c "export PATH=\"\$HOME/.local/bin:\$PATH\" && uv --version && python3 --version && docker-compose --version"
 ```
+
+**Important**: The pipeline uses:
+- `uv` for Python dependency management (installed in `/var/jenkins_home/.local/bin`)
+- `docker-compose` for container orchestration
+- Python 3.13+ for running tests
 
 #### Step 5: Create Jenkins Pipeline Job
 
@@ -221,14 +208,16 @@ docker restart jenkins
 - Verifies repository structure
 
 ### 2. Build
-- Installs Python dependencies
-- Prepares application environment
-- Validates requirements
+- Validates application file structure
+- Checks requirements.txt exists
+- Validates Python syntax with py_compile
+- Prepares for testing phase
 
 ### 3. Test
+- Creates clean virtual environment using `uv init`
+- Installs dependencies with `uv add -r requirements.txt`
 - Runs pytest unit tests
 - Verifies application functionality
-- Ensures code quality
 - All tests must pass to proceed
 
 ### 4. Package
@@ -245,9 +234,10 @@ docker restart jenkins
 ### 6. Health Check
 - Executes healthcheck.sh script
 - Validates container is running
-- Tests /health endpoint
-- Ensures application is responding
-- Verifies healthy status
+- Tests /health endpoint using `docker exec` with Python requests
+- Ensures application is responding from within container
+- Verifies healthy status in JSON response
+- **Note**: Uses Python instead of curl for compatibility
 
 ### 7. Display Status
 - Shows deployment summary
@@ -257,7 +247,25 @@ docker restart jenkins
 
 ## Running Tests Locally
 
-### Unit Tests
+### Unit Tests (Using uv - Recommended)
+
+```bash
+cd app
+
+# Initialize uv project
+uv init --no-readme
+
+# Activate virtual environment
+source .venv/bin/activate  # or `. .venv/bin/activate` in sh
+
+# Install dependencies
+uv add -r requirements.txt
+
+# Run tests
+python -m pytest test_app.py -v
+```
+
+### Unit Tests (Using pip)
 
 ```bash
 cd app
@@ -316,79 +324,99 @@ docker-compose ps
 
 The `healthcheck.sh` script performs comprehensive health verification:
 
-1. Verifies container is running
-2. Checks container health status
-3. Tests health endpoint with retries
-4. Validates healthy response
+1. Verifies container is running using `docker-compose ps`
+2. Checks container health status with `docker inspect`
+3. Tests health endpoint with retries using `docker exec` and Python requests
+4. Validates healthy status in JSON response (handles both `"status":"healthy"` and `"status": "healthy"`)
 5. Tests home endpoint
 6. Reports overall status
 
+**Key Feature**: Uses `docker exec demo-app-container python -c "import requests; ..."` to bypass network isolation issues.
+
 Run manually:
 ```bash
+chmod +x healthcheck.sh
 ./healthcheck.sh
 ```
 
 ## Troubleshooting
 
-### Issue: Container fails to start
+### Issue: Container name conflict
+
+**Error**: `The container name "/demo-app-container" is already in use`
 
 **Solution:**
 ```bash
-# Check logs
-docker-compose logs
+# Force remove existing container
+docker rm -f demo-app-container
 
-# Check if port 5000 is already in use
-lsof -i :5000
-netstat -an | grep 5000
-
-# Kill process using the port
-kill -9 <PID>
+# Or use docker-compose with remove-orphans
+docker-compose down --remove-orphans
 ```
 
-### Issue: Health check fails
+### Issue: Port 5000 already in use
 
 **Solution:**
 ```bash
-# Check container status
-docker-compose ps
+# Check what's using port 5000
+ss -tulpn | grep :5000
 
-# View application logs
-docker-compose logs demo-app
-
-# Check if application is responding
-curl -v http://localhost:5000/health
-
-# Restart the container
-docker-compose restart
+# Kill the process or change port in docker-compose.yml
+docker-compose down
 ```
+
+### Issue: `uv: not found` in Jenkins
+
+**Error**: `/var/jenkins_home/workspace/...script.sh.copy: 3: uv: not found`
+
+**Solution:**
+```bash
+# Install uv for jenkins user
+docker exec -it jenkins bash -c "curl -LsSf https://astral.sh/uv/install.sh | sh"
+
+# Verify installation
+docker exec -it jenkins bash -c "export PATH=\"\$HOME/.local/bin:\$PATH\" && uv --version"
+```
+
+### Issue: `source: not found` in Jenkins
+
+**Error**: `script.sh.copy: 9: source: not found`
+
+**Root Cause**: Jenkins uses `sh` (not `bash`), which doesn't have `source` command.
+
+**Solution**: Use `. .venv/bin/activate` instead of `source .venv/bin/activate`
+
+### Issue: Python externally managed
+
+**Error**: `The interpreter at /usr is externally managed`
+
+**Solution**: The pipeline uses virtual environments (`uv init`) to bypass this. Don't use `--system` flag.
+
+### Issue: Health check fails but container is healthy
+
+**Error**: `Health endpoint is not responding` but `docker inspect` shows healthy
+
+**Root Cause**: Network isolation - Jenkins can't access `localhost:5000` of the app container.
+
+**Solution**: Use `docker exec demo-app-container python -c "import requests; ..."` to run checks from inside the container.
+
+### Issue: Grep pattern mismatch in health check
+
+**Error**: `[WARNING] Application status is not healthy`
+
+**Root Cause**: JSON might not have space after colon: `"status":"healthy"` vs `"status": "healthy"`
+
+**Solution**: Use flexible grep pattern: `'"status".*:.*"healthy"'`
 
 ### Issue: Jenkins cannot connect to Docker
 
 **Solution:**
 ```bash
-# Verify Docker socket is mounted
-docker inspect jenkins | grep docker.sock
+# Fix Docker socket permissions
+docker exec -it --user root jenkins bash -c "chmod 666 /var/run/docker.sock"
 
-# Check Docker is running in Jenkins container
+# Verify Docker works
 docker exec jenkins docker ps
-
-# Verify jenkins user has docker permissions
-docker exec jenkins groups jenkins
-```
-
-### Issue: Tests fail in Jenkins
-
-**Solution:**
-```bash
-# Run tests locally first
-cd app
-python -m pytest test_app.py -v
-
-# Check Python version in Jenkins
-docker exec jenkins python3 --version
-
-# Install pip if missing
-docker exec -u root jenkins apt-get install -y python3-pip
 ```
 
 ### Issue: Permission denied on healthcheck.sh
@@ -397,6 +425,12 @@ docker exec -u root jenkins apt-get install -y python3-pip
 ```bash
 chmod +x healthcheck.sh
 ```
+
+### Issue: `obsolete version attribute` warning
+
+**Warning**: `the attribute 'version' is obsolete`
+
+**Solution**: Remove `version: '3.8'` from docker-compose.yml (already fixed in this repo)
 
 ## Project Configuration
 
