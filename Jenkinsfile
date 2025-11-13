@@ -22,7 +22,7 @@ pipeline {
                 echo 'Installing dependencies...'
                 sh '''
                     cd app
-                    pip install -r requirements.txt
+                    uv add -r requirements.txt
                     echo "Build completed successfully"
                 '''
             }
@@ -56,16 +56,16 @@ pipeline {
                 echo 'Deploying application using Docker Compose...'
                 sh '''
                     # Stop and remove existing containers
-                    docker-compose down || true
+                    docker compose down || true
 
                     # Start the application
-                    docker-compose up -d
+                    docker compose up -d
 
                     echo "Waiting for application to start..."
                     sleep 10
 
                     # Check if container is running
-                    docker-compose ps
+                    docker compose ps
                 '''
             }
         }
@@ -98,7 +98,7 @@ pipeline {
                     echo "Status: RUNNING"
                     echo ""
                     echo "Container Status:"
-                    docker-compose ps
+                    docker compose ps
                     echo ""
                     echo "Application URL: http://localhost:5000"
                     echo "Health Check URL: http://localhost:5000/health"
@@ -123,7 +123,7 @@ pipeline {
         }
         failure {
             echo 'Pipeline failed!'
-            sh 'docker-compose logs || true'
+            sh 'docker compose logs || true'
         }
         always {
             echo 'Pipeline execution finished.'

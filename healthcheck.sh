@@ -17,7 +17,7 @@ echo ""
 
 # Check if container is running
 echo "1. Checking if container is running..."
-if docker-compose ps | grep -q "demo-app-container"; then
+if docker compose ps | grep -q "demo-app-container"; then
     echo "   [OK] Container is running"
 else
     echo "   [FAILED] Container is not running"
