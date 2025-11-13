@@ -60,8 +60,8 @@ if check_endpoint "${HEALTH_ENDPOINT}" "Health endpoint"; then
     HEALTH_RESPONSE=$(docker exec demo-app-container python -c "import requests; print(requests.get('${HEALTH_ENDPOINT}').text)")
     echo "   Response: ${HEALTH_RESPONSE}"
 
-    # Validate health status
-    if echo "${HEALTH_RESPONSE}" | grep -q '"status": "healthy"'; then
+    # Validate health status (allow optional space after colon)
+    if echo "${HEALTH_RESPONSE}" | grep -q '"status".*:.*"healthy"'; then
         echo "   [OK] Application reports healthy status"
     else
         echo "   [WARNING] Application status is not healthy"
